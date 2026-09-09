@@ -60,7 +60,38 @@ app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
-app.MapPost("/logout", async (Microsoft.AspNetCore.Identity.SignInManager<ApplicationUser> signInManager) =>
+// Il login è un endpoint minimale (non un componente Blazor con EditForm) di proposito: impostare il
+// cookie di autenticazione richiede una risposta HTTP "normale", cosa che un gestore EditForm dentro un
+// componente già interattivo non può fare in modo affidabile. Stesso motivo/pattern del logout sotto.
+app.MapPost("/account/login", async (HttpContext context, SignInManager<ApplicationUser> signInManager, UserManager<ApplicationUser> userManager) =>
+{
+    var form = await context.Request.ReadFormAsync();
+    var email = form["Email"].ToString();
+    var password = form["Password"].ToString();
+    var returnUrl = form["ReturnUrl"].ToString();
+
+    var result = await signInManager.PasswordSignInAsync(email, password, isPersistent: true, lockoutOnFailure: false);
+    if (!result.Succeeded)
+    {
+        var failureRedirect = $"/login?error=1&ReturnUrl={Uri.EscapeDataString(returnUrl)}";
+        return Results.LocalRedirect(failureRedirect);
+    }
+
+    if (!string.IsNullOrEmpty(returnUrl))
+    {
+        return Results.LocalRedirect(returnUrl);
+    }
+
+    var user = await userManager.FindByEmailAsync(email);
+    var roles = user is null ? [] : await userManager.GetRolesAsync(user);
+    var destinazione = roles.Contains("Autista") && !roles.Contains("Admin") && !roles.Contains("Logistica")
+        ? "/le-mie-tratte"
+        : "/";
+
+    return Results.LocalRedirect(destinazione);
+}).AllowAnonymous();
+
+app.MapPost("/logout", async (SignInManager<ApplicationUser> signInManager) =>
 {
     await signInManager.SignOutAsync();
     return Results.LocalRedirect("/login");

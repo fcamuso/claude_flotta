@@ -1,13 +1,6 @@
 @page "/login"
 @layout Layout.LoginLayout
 @attribute [Microsoft.AspNetCore.Authorization.AllowAnonymous]
-@using System.ComponentModel.DataAnnotations
-@using System.Security.Claims
-@using FlottaGestionale.Infrastructure.Identity
-@using Microsoft.AspNetCore.Identity
-@inject SignInManager<ApplicationUser> SignInManager
-@inject UserManager<ApplicationUser> UserManager
-@inject NavigationManager NavigationManager
 
 <PageTitle>Accedi</PageTitle>
 
@@ -16,25 +9,26 @@
         <h1>Gestionale Flotta</h1>
         <h2>Accedi</h2>
 
-        @if (_errorMessage is not null)
+        @if (ErrorFlag == "1")
         {
-            <p class="login-error">@_errorMessage</p>
+            <p class="login-error">Email o password non corretti.</p>
         }
 
-        <EditForm Model="Input" FormName="login" OnValidSubmit="LoginAsync" method="post">
-            <DataAnnotationsValidator />
+        <form method="post" action="/account/login">
+            <AntiforgeryToken />
+            <input type="hidden" name="ReturnUrl" value="@ReturnUrl" />
 
             <div class="login-field">
                 <label for="email">Email</label>
-                <InputText id="email" @bind-Value="Input.Email" class="login-input" autocomplete="username" />
+                <input id="email" name="Email" type="email" autocomplete="username" class="login-input" />
             </div>
             <div class="login-field">
                 <label for="password">Password</label>
-                <InputText id="password" type="password" @bind-Value="Input.Password" class="login-input" autocomplete="current-password" />
+                <input id="password" name="Password" type="password" autocomplete="current-password" class="login-input" />
             </div>
 
             <button type="submit" class="login-button">Accedi</button>
-        </EditForm>
+        </form>
     </div>
 </div>
 
@@ -52,50 +46,9 @@
 </style>
 
 @code {
-    [SupplyParameterFromForm]
-    private LoginInputModel Input { get; set; } = new();
-
     [SupplyParameterFromQuery]
     private string? ReturnUrl { get; set; }
 
-    private string? _errorMessage;
-
-    protected override void OnInitialized()
-    {
-        Input ??= new();
-    }
-
-    private async Task LoginAsync()
-    {
-        var result = await SignInManager.PasswordSignInAsync(Input.Email, Input.Password, isPersistent: true, lockoutOnFailure: false);
-        if (!result.Succeeded)
-        {
-            _errorMessage = "Email o password non corretti.";
-            return;
-        }
-
-        if (!string.IsNullOrEmpty(ReturnUrl))
-        {
-            NavigationManager.NavigateTo(ReturnUrl, forceLoad: true);
-            return;
-        }
-
-        var user = await UserManager.FindByEmailAsync(Input.Email);
-        var roles = user is null ? [] : await UserManager.GetRolesAsync(user);
-        var destinazione = roles.Contains("Autista") && !roles.Contains("Admin") && !roles.Contains("Logistica")
-            ? "/le-mie-tratte"
-            : "/";
-
-        NavigationManager.NavigateTo(destinazione, forceLoad: true);
-    }
-
-    private class LoginInputModel
-    {
-        [Required(ErrorMessage = "Inserisci l'email.")]
-        [EmailAddress(ErrorMessage = "Email non valida.")]
-        public string Email { get; set; } = string.Empty;
-
-        [Required(ErrorMessage = "Inserisci la password.")]
-        public string Password { get; set; } = string.Empty;
-    }
+    [SupplyParameterFromQuery(Name = "error")]
+    private string? ErrorFlag { get; set; }
 }
