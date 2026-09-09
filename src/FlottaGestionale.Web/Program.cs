@@ -1,7 +1,9 @@
 using FlottaGestionale.Infrastructure;
 using FlottaGestionale.Infrastructure.Identity;
+using FlottaGestionale.Infrastructure.Persistence;
 using FlottaGestionale.Web.Components;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 using MudBlazor.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -63,6 +65,17 @@ app.MapPost("/logout", async (Microsoft.AspNetCore.Identity.SignInManager<Applic
     await signInManager.SignOutAsync();
     return Results.LocalRedirect("/login");
 }).RequireAuthorization();
+
+// In sviluppo applica automaticamente le migrazioni pendenti (SQLite locale), così "dotnet run"
+// basta da solo per avere un DB pronto. In produzione le migrazioni si applicano esplicitamente
+// come parte del deploy, non all'avvio dell'app: vedi le note di deploy.
+if (app.Environment.IsDevelopment())
+{
+    using var scope = app.Services.CreateScope();
+    var dbContextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<AppDbContext>>();
+    await using var db = await dbContextFactory.CreateDbContextAsync();
+    await db.Database.MigrateAsync();
+}
 
 await IdentitySeeder.SeedAsync(app.Services);
 
