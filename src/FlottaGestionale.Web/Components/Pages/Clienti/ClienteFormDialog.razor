@@ -1,0 +1,38 @@
+@using FlottaGestionale.Domain.Entities
+
+<MudDialog>
+    <DialogContent>
+        <MudForm @ref="_form" Model="Model">
+            <MudTextField @bind-Value="Model.RagioneSociale" Label="Ragione sociale" Required="true" RequiredError="La ragione sociale è obbligatoria." />
+            <MudTextField @bind-Value="Model.PartitaIva" Label="Partita IVA" MaxLength="20" />
+            <MudTextField @bind-Value="Model.Indirizzo" Label="Indirizzo" />
+            <MudTextField @bind-Value="Model.Telefono" Label="Telefono" />
+            <MudTextField @bind-Value="Model.Email" Label="Email" InputType="InputType.Email" />
+            <MudSwitch @bind-Value="Model.Attivo" Label="Attivo" Color="Color.Primary" Class="mt-2" />
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Annulla</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SubmitAsync">Salva</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public Cliente Model { get; set; } = new();
+
+    private MudForm _form = null!;
+
+    private async Task SubmitAsync()
+    {
+        await _form.ValidateAsync();
+        if (!_form.IsValid)
+        {
+            return;
+        }
+
+        MudDialog.Close(DialogResult.Ok(Model));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

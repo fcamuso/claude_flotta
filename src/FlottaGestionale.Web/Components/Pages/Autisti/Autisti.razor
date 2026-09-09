@@ -1,0 +1,157 @@
+@page "/autisti"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin,Logistica")]
+@using FlottaGestionale.Application.Interfaces
+@using FlottaGestionale.Domain.Entities
+@inject IAutistaService AutistaService
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<PageTitle>Autisti</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Autisti</MudText>
+
+<MudPaper Class="pa-4 mb-4" Elevation="2">
+    <MudGrid Class="align-center">
+        <MudItem xs="12" sm="8">
+            <MudTextField T="string" Value="_searchTerm" ValueChanged="OnSearchChangedAsync" Label="Cerca per nome, cognome o codice fiscale"
+                          Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Immediate="true" DebounceInterval="300" />
+        </MudItem>
+        <MudItem xs="12" sm="4" Class="d-flex justify-end">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="() => OpenDialogAsync(null)">
+                Nuovo autista
+            </MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else if (_autisti.Count == 0)
+{
+    <MudText Color="Color.Secondary">Nessun autista trovato.</MudText>
+}
+else
+{
+    <MudTable Items="_autisti" Hover="true">
+        <HeaderContent>
+            <MudTh>Cognome e nome</MudTh>
+            <MudTh>Codice fiscale</MudTh>
+            <MudTh>Patente</MudTh>
+            <MudTh>Contatti</MudTh>
+            <MudTh>Stato</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Cognome e nome">@context.Cognome @context.Nome</MudTd>
+            <MudTd DataLabel="Codice fiscale">@context.CodiceFiscale</MudTd>
+            <MudTd DataLabel="Patente">@context.NumeroPatente @(string.IsNullOrEmpty(context.CategoriaPatente) ? "" : $"({context.CategoriaPatente})")</MudTd>
+            <MudTd DataLabel="Contatti">@context.Telefono @context.Email</MudTd>
+            <MudTd DataLabel="Stato">
+                <MudChip T="string" Color="@(context.Attivo ? Color.Success : Color.Default)" Size="Size.Small">
+                    @(context.Attivo ? "Attivo" : "Non attivo")
+                </MudChip>
+            </MudTd>
+            <MudTd>
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="() => OpenDialogAsync(context)" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="() => DeleteAsync(context)" />
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    private List<Autista> _autisti = [];
+    private bool _loading = true;
+    private string _searchTerm = string.Empty;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _autisti = await AutistaService.GetAllAsync(_searchTerm);
+        _loading = false;
+    }
+
+    private async Task OnSearchChangedAsync(string value)
+    {
+        _searchTerm = value;
+        await LoadAsync();
+    }
+
+    private async Task OpenDialogAsync(Autista? autista)
+    {
+        var parameters = new DialogParameters<AutistaFormDialog>
+        {
+            { x => x.Model, autista is null ? new Autista() : Clone(autista) }
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<AutistaFormDialog>(autista is null ? "Nuovo autista" : "Modifica autista", parameters, options);
+        var result = await dialog.Result;
+
+        if (result is null || result.Canceled)
+        {
+            return;
+        }
+
+        try
+        {
+            if (autista is null)
+            {
+                await AutistaService.CreateAsync((Autista)result.Data!);
+                Snackbar.Add("Autista creato.", Severity.Success);
+            }
+            else
+            {
+                await AutistaService.UpdateAsync((Autista)result.Data!);
+                Snackbar.Add("Autista aggiornato.", Severity.Success);
+            }
+
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Errore: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task DeleteAsync(Autista autista)
+    {
+        var confirm = await DialogService.ShowMessageBoxAsync(
+            "Conferma eliminazione",
+            $"Eliminare l'autista {autista.Nome} {autista.Cognome}?",
+            yesText: "Elimina", cancelText: "Annulla");
+
+        if (confirm != true)
+        {
+            return;
+        }
+
+        try
+        {
+            await AutistaService.DeleteAsync(autista.Id);
+            Snackbar.Add("Autista eliminato.", Severity.Success);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Errore: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private static Autista Clone(Autista source) => new()
+    {
+        Id = source.Id,
+        Nome = source.Nome,
+        Cognome = source.Cognome,
+        CodiceFiscale = source.CodiceFiscale,
+        NumeroPatente = source.NumeroPatente,
+        CategoriaPatente = source.CategoriaPatente,
+        DataScadenzaPatente = source.DataScadenzaPatente,
+        Telefono = source.Telefono,
+        Email = source.Email,
+        Attivo = source.Attivo
+    };
+}

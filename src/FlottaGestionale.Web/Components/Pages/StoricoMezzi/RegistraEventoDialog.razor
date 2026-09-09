@@ -1,0 +1,73 @@
+@using FlottaGestionale.Domain.Entities
+@using FlottaGestionale.Domain.Enums
+
+<MudDialog>
+    <DialogContent>
+        <MudForm @ref="_form">
+            <MudSelect T="TipoEventoStorico" @bind-Value="_tipoEvento" Label="Tipo intervento">
+                @foreach (var tipo in Enum.GetValues<TipoEventoStorico>())
+                {
+                    <MudSelectItem T="TipoEventoStorico" Value="@tipo">@TipoLabel(tipo)</MudSelectItem>
+                }
+            </MudSelect>
+            <MudDatePicker @bind-Date="_data" Label="Data" Required="true" RequiredError="Seleziona una data." />
+            <MudNumericField @bind-Value="_chilometraggioEvento" Label="Chilometraggio al momento dell'intervento" Min="0" Immediate="true" Required="true" />
+            <MudTextField @bind-Value="_descrizione" Label="Descrizione" Lines="3" Required="true" RequiredError="Inserisci una descrizione." />
+            <MudNumericField @bind-Value="_costo" Label="Costo (€)" Min="0" Immediate="true" />
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Annulla</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SubmitAsync">Registra</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public int MezzoId { get; set; }
+    [Parameter] public int ChilometraggioAttualeMezzo { get; set; }
+
+    private MudForm _form = null!;
+    private TipoEventoStorico _tipoEvento = TipoEventoStorico.Manutenzione;
+    private DateTime? _data = DateTime.Today;
+    private int _chilometraggioEvento;
+    private string? _descrizione;
+    private decimal? _costo;
+
+    protected override void OnInitialized()
+    {
+        _chilometraggioEvento = ChilometraggioAttualeMezzo;
+    }
+
+    private async Task SubmitAsync()
+    {
+        await _form.ValidateAsync();
+        if (!_form.IsValid || _data is null)
+        {
+            return;
+        }
+
+        var evento = new StoricoMezzo
+        {
+            MezzoId = MezzoId,
+            TipoEvento = _tipoEvento,
+            Data = _data.Value,
+            ChilometraggioEvento = _chilometraggioEvento,
+            Descrizione = _descrizione ?? string.Empty,
+            Costo = _costo
+        };
+
+        MudDialog.Close(DialogResult.Ok(evento));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private static string TipoLabel(TipoEventoStorico tipo) => tipo switch
+    {
+        TipoEventoStorico.Manutenzione => "Manutenzione",
+        TipoEventoStorico.Revisione => "Revisione",
+        TipoEventoStorico.Sinistro => "Sinistro",
+        TipoEventoStorico.AltroIntervento => "Altro intervento",
+        _ => tipo.ToString()
+    };
+}

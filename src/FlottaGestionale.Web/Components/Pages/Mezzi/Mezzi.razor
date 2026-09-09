@@ -1,0 +1,179 @@
+@page "/mezzi"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin,Logistica")]
+@using FlottaGestionale.Application.Interfaces
+@using FlottaGestionale.Domain.Entities
+@using FlottaGestionale.Domain.Enums
+@using FlottaGestionale.Domain.Services
+@inject IMezzoService MezzoService
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject NavigationManager NavigationManager
+
+<PageTitle>Mezzi</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Mezzi</MudText>
+
+<MudPaper Class="pa-4 mb-4" Elevation="2">
+    <MudGrid Class="align-center">
+        <MudItem xs="12" sm="8">
+            <MudTextField T="string" Value="_searchTerm" ValueChanged="OnSearchChangedAsync" Label="Cerca per targa, marca o modello"
+                          Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Immediate="true" DebounceInterval="300" />
+        </MudItem>
+        <MudItem xs="12" sm="4" Class="d-flex justify-end">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="() => OpenDialogAsync(null)">
+                Nuovo mezzo
+            </MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else if (_mezzi.Count == 0)
+{
+    <MudText Color="Color.Secondary">Nessun mezzo trovato.</MudText>
+}
+else
+{
+    <MudTable Items="_mezzi" Hover="true">
+        <HeaderContent>
+            <MudTh>Targa</MudTh>
+            <MudTh>Marca / Modello</MudTh>
+            <MudTh>Km attuali</MudTh>
+            <MudTh>Km residui manutenzione</MudTh>
+            <MudTh>Stato</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Targa">@context.Targa</MudTd>
+            <MudTd DataLabel="Marca / Modello">@context.Marca @context.Modello</MudTd>
+            <MudTd DataLabel="Km attuali">@context.ChilometraggioAttuale</MudTd>
+            <MudTd DataLabel="Km residui manutenzione">@ManutenzioneCalculator.CalcolaKmResiduiManutenzione(context)</MudTd>
+            <MudTd DataLabel="Stato">
+                <MudChip T="string" Color="@StatoColor(context.Stato)" Size="Size.Small">@StatoLabel(context.Stato)</MudChip>
+            </MudTd>
+            <MudTd>
+                <MudIconButton Icon="@Icons.Material.Filled.Build" Size="Size.Small" OnClick="() => VaiAlloStorico(context.Id)" />
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="() => OpenDialogAsync(context)" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="() => DeleteAsync(context)" />
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    private List<Mezzo> _mezzi = [];
+    private bool _loading = true;
+    private string _searchTerm = string.Empty;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _mezzi = await MezzoService.GetAllAsync(_searchTerm);
+        _loading = false;
+    }
+
+    private void VaiAlloStorico(int mezzoId) => NavigationManager.NavigateTo($"/mezzi/{mezzoId}/storico");
+
+    private async Task OnSearchChangedAsync(string value)
+    {
+        _searchTerm = value;
+        await LoadAsync();
+    }
+
+    private async Task OpenDialogAsync(Mezzo? mezzo)
+    {
+        var parameters = new DialogParameters<MezzoFormDialog>
+        {
+            { x => x.Model, mezzo is null ? new Mezzo() : Clone(mezzo) }
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<MezzoFormDialog>(mezzo is null ? "Nuovo mezzo" : "Modifica mezzo", parameters, options);
+        var result = await dialog.Result;
+
+        if (result is null || result.Canceled)
+        {
+            return;
+        }
+
+        try
+        {
+            if (mezzo is null)
+            {
+                await MezzoService.CreateAsync((Mezzo)result.Data!);
+                Snackbar.Add("Mezzo creato.", Severity.Success);
+            }
+            else
+            {
+                await MezzoService.UpdateAsync((Mezzo)result.Data!);
+                Snackbar.Add("Mezzo aggiornato.", Severity.Success);
+            }
+
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Errore: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task DeleteAsync(Mezzo mezzo)
+    {
+        var confirm = await DialogService.ShowMessageBoxAsync(
+            "Conferma eliminazione",
+            $"Eliminare il mezzo {mezzo.Targa}?",
+            yesText: "Elimina", cancelText: "Annulla");
+
+        if (confirm != true)
+        {
+            return;
+        }
+
+        try
+        {
+            await MezzoService.DeleteAsync(mezzo.Id);
+            Snackbar.Add("Mezzo eliminato.", Severity.Success);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Errore: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private static Mezzo Clone(Mezzo source) => new()
+    {
+        Id = source.Id,
+        Targa = source.Targa,
+        Marca = source.Marca,
+        Modello = source.Modello,
+        Anno = source.Anno,
+        ChilometraggioAttuale = source.ChilometraggioAttuale,
+        IntervalloManutenzioneKm = source.IntervalloManutenzioneKm,
+        ChilometraggioUltimaManutenzione = source.ChilometraggioUltimaManutenzione,
+        Stato = source.Stato,
+        Attivo = source.Attivo
+    };
+
+    private static Color StatoColor(StatoMezzo stato) => stato switch
+    {
+        StatoMezzo.Disponibile => Color.Success,
+        StatoMezzo.InTransito => Color.Info,
+        StatoMezzo.InManutenzione => Color.Warning,
+        StatoMezzo.FuoriServizio => Color.Error,
+        _ => Color.Default
+    };
+
+    private static string StatoLabel(StatoMezzo stato) => stato switch
+    {
+        StatoMezzo.Disponibile => "Disponibile",
+        StatoMezzo.InTransito => "In transito",
+        StatoMezzo.InManutenzione => "In manutenzione",
+        StatoMezzo.FuoriServizio => "Fuori servizio",
+        _ => stato.ToString()
+    };
+}

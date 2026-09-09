@@ -1,0 +1,132 @@
+@page "/tratte"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin,Logistica")]
+@using FlottaGestionale.Application.Interfaces
+@using FlottaGestionale.Domain.Entities
+@using FlottaGestionale.Domain.Enums
+@inject ITrattaService TrattaService
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject NavigationManager NavigationManager
+
+<PageTitle>Tratte</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Tratte</MudText>
+
+<MudPaper Class="pa-4 mb-4" Elevation="2">
+    <MudGrid Class="align-center">
+        <MudItem xs="12" sm="8">
+            <MudSelect T="StatoTratta?" Value="_filtroStato" ValueChanged="OnFiltroChangedAsync" Label="Filtra per stato" Clearable="true">
+                @foreach (var stato in Enum.GetValues<StatoTratta>())
+                {
+                    <MudSelectItem T="StatoTratta?" Value="@((StatoTratta?)stato)">@StatoLabel(stato)</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="4" Class="d-flex justify-end">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="OpenNuovaTrattaDialogAsync">
+                Nuova tratta
+            </MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else if (_tratte.Count == 0)
+{
+    <MudText Color="Color.Secondary">Nessuna tratta trovata.</MudText>
+}
+else
+{
+    <MudTable Items="_tratte" Hover="true">
+        <HeaderContent>
+            <MudTh>Data pianificata</MudTh>
+            <MudTh>Autista</MudTh>
+            <MudTh>Mezzo</MudTh>
+            <MudTh>Cliente</MudTh>
+            <MudTh>Stato</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Data pianificata">@context.DataPianificata.ToString("dd/MM/yyyy")</MudTd>
+            <MudTd DataLabel="Autista">@context.Autista.Cognome @context.Autista.Nome</MudTd>
+            <MudTd DataLabel="Mezzo">@context.Mezzo.Targa</MudTd>
+            <MudTd DataLabel="Cliente">@context.Cliente.RagioneSociale</MudTd>
+            <MudTd DataLabel="Stato">
+                <MudChip T="string" Color="@StatoColor(context.Stato)" Size="Size.Small">@StatoLabel(context.Stato)</MudChip>
+            </MudTd>
+            <MudTd>
+                <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="() => VaiAlDettaglio(context.Id)">
+                    Dettaglio
+                </MudButton>
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    private List<Tratta> _tratte = [];
+    private bool _loading = true;
+    private StatoTratta? _filtroStato;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _tratte = await TrattaService.GetAllAsync(_filtroStato);
+        _loading = false;
+    }
+
+    private async Task OnFiltroChangedAsync(StatoTratta? value)
+    {
+        _filtroStato = value;
+        await LoadAsync();
+    }
+
+    private void VaiAlDettaglio(int trattaId) => NavigationManager.NavigateTo($"/tratte/{trattaId}");
+
+    private async Task OpenNuovaTrattaDialogAsync()
+    {
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<NuovaTrattaDialog>("Nuova tratta", options);
+        var result = await dialog.Result;
+
+        if (result is null || result.Canceled)
+        {
+            return;
+        }
+
+        try
+        {
+            var data = (NuovaTrattaDialog.NuovaTrattaResult)result.Data!;
+            await TrattaService.CreaTrattaAsync(data.Tratta, data.DestinazioniOrdinate);
+            Snackbar.Add("Tratta creata.", Severity.Success);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Errore: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private static Color StatoColor(StatoTratta stato) => stato switch
+    {
+        StatoTratta.Pianificata => Color.Info,
+        StatoTratta.InCorso => Color.Warning,
+        StatoTratta.Completata => Color.Success,
+        StatoTratta.Annullata => Color.Default,
+        _ => Color.Default
+    };
+
+    private static string StatoLabel(StatoTratta stato) => stato switch
+    {
+        StatoTratta.Pianificata => "Pianificata",
+        StatoTratta.InCorso => "In corso",
+        StatoTratta.Completata => "Completata",
+        StatoTratta.Annullata => "Annullata",
+        _ => stato.ToString()
+    };
+}

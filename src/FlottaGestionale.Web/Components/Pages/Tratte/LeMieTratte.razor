@@ -1,0 +1,93 @@
+@page "/le-mie-tratte"
+@using System.Security.Claims
+@using FlottaGestionale.Application.Interfaces
+@using FlottaGestionale.Domain.Entities
+@using FlottaGestionale.Domain.Enums
+@using FlottaGestionale.Infrastructure.Identity
+@using Microsoft.AspNetCore.Identity
+@inject UserManager<ApplicationUser> UserManager
+@inject ITrattaService TrattaService
+@inject NavigationManager NavigationManager
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<PageTitle>Le mie tratte</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Le mie tratte</MudText>
+
+@if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else if (!_autistaCollegato)
+{
+    <MudAlert Severity="Severity.Info">
+        Il tuo account non è ancora collegato a un'anagrafica Autista. Contatta un amministratore per completare il collegamento.
+    </MudAlert>
+}
+else if (_tratte.Count == 0)
+{
+    <MudText Color="Color.Secondary">Nessuna tratta assegnata al momento.</MudText>
+}
+else
+{
+    <MudStack Spacing="3">
+        @foreach (var tratta in _tratte)
+        {
+            <MudPaper Class="pa-4" Elevation="2" @onclick="() => VaiAlDettaglio(tratta.Id)" Style="cursor:pointer">
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                    <div>
+                        <MudText Typo="Typo.subtitle1">@tratta.Cliente.RagioneSociale</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">
+                            @tratta.DataPianificata.ToString("dd/MM/yyyy") — Mezzo @tratta.Mezzo.Targa — @tratta.Tappe.Count tappe
+                        </MudText>
+                    </div>
+                    <MudChip T="string" Color="@StatoColor(tratta.Stato)" Size="Size.Small">@StatoLabel(tratta.Stato)</MudChip>
+                </MudStack>
+            </MudPaper>
+        }
+    </MudStack>
+}
+
+@code {
+    private List<Tratta> _tratte = [];
+    private bool _loading = true;
+    private bool _autistaCollegato;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var email = authState.User.FindFirstValue(ClaimTypes.Email) ?? authState.User.Identity?.Name;
+
+        if (!string.IsNullOrEmpty(email))
+        {
+            var user = await UserManager.FindByEmailAsync(email);
+            if (user?.AutistaId is not null)
+            {
+                _autistaCollegato = true;
+                var tutte = await TrattaService.GetAllAsync();
+                _tratte = tutte
+                    .Where(t => t.AutistaId == user.AutistaId && t.Stato is StatoTratta.Pianificata or StatoTratta.InCorso)
+                    .OrderBy(t => t.DataPianificata)
+                    .ToList();
+            }
+        }
+
+        _loading = false;
+    }
+
+    private void VaiAlDettaglio(int trattaId) => NavigationManager.NavigateTo($"/tratte/{trattaId}");
+
+    private static Color StatoColor(StatoTratta stato) => stato switch
+    {
+        StatoTratta.Pianificata => Color.Info,
+        StatoTratta.InCorso => Color.Warning,
+        _ => Color.Default
+    };
+
+    private static string StatoLabel(StatoTratta stato) => stato switch
+    {
+        StatoTratta.Pianificata => "Pianificata",
+        StatoTratta.InCorso => "In corso",
+        _ => stato.ToString()
+    };
+}

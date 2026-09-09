@@ -1,0 +1,77 @@
+@page "/storico-mezzi"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin,Logistica")]
+@using FlottaGestionale.Application.Interfaces
+@using FlottaGestionale.Application.Models
+@using FlottaGestionale.Domain.Enums
+@inject IManutenzioneService ManutenzioneService
+@inject NavigationManager NavigationManager
+
+<PageTitle>Storico Mezzi</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-2">Registro Manutenzioni</MudText>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+    Stato di manutenzione della flotta, ordinato per urgenza. Apri lo storico di un mezzo per consultare gli interventi passati o registrarne uno nuovo.
+</MudText>
+
+@if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else if (_statoFlotta.Count == 0)
+{
+    <MudText Color="Color.Secondary">Nessun mezzo attivo censito.</MudText>
+}
+else
+{
+    <MudTable Items="_statoFlotta" Hover="true">
+        <HeaderContent>
+            <MudTh>Targa</MudTh>
+            <MudTh>Marca / Modello</MudTh>
+            <MudTh>Km attuali</MudTh>
+            <MudTh>Km residui a manutenzione</MudTh>
+            <MudTh>Stato</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Targa">@context.Mezzo.Targa</MudTd>
+            <MudTd DataLabel="Marca / Modello">@context.Mezzo.Marca @context.Mezzo.Modello</MudTd>
+            <MudTd DataLabel="Km attuali">@context.Mezzo.ChilometraggioAttuale</MudTd>
+            <MudTd DataLabel="Km residui">@context.KmResidui</MudTd>
+            <MudTd DataLabel="Stato">
+                <MudChip T="string" Color="@StatoColor(context.Stato)" Size="Size.Small">@StatoLabel(context.Stato)</MudChip>
+            </MudTd>
+            <MudTd>
+                <MudButton Size="Size.Small" Variant="Variant.Outlined" OnClick="() => VaiAlloStorico(context.Mezzo.Id)">
+                    Storico
+                </MudButton>
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    private List<MezzoStatoManutenzioneDto> _statoFlotta = [];
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _statoFlotta = await ManutenzioneService.GetStatoManutenzioneFlottaAsync();
+        _loading = false;
+    }
+
+    private void VaiAlloStorico(int mezzoId) => NavigationManager.NavigateTo($"/mezzi/{mezzoId}/storico");
+
+    private static Color StatoColor(StatoManutenzione stato) => stato switch
+    {
+        StatoManutenzione.Scaduta => Color.Error,
+        StatoManutenzione.Imminente => Color.Warning,
+        _ => Color.Success
+    };
+
+    private static string StatoLabel(StatoManutenzione stato) => stato switch
+    {
+        StatoManutenzione.Scaduta => "Scaduta",
+        StatoManutenzione.Imminente => "Imminente",
+        _ => "In regola"
+    };
+}

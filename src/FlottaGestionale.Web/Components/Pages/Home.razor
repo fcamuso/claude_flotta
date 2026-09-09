@@ -1,0 +1,109 @@
+@page "/"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin,Logistica")]
+@using FlottaGestionale.Application.Interfaces
+@using FlottaGestionale.Application.Models
+@using FlottaGestionale.Domain.Enums
+@inject IMezzoService MezzoService
+@inject IManutenzioneService ManutenzioneService
+
+<PageTitle>Dashboard</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Dashboard operativa</MudText>
+
+@if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else
+{
+    <MudGrid>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Mezzi disponibili</MudText>
+                <MudText Typo="Typo.h3">@_disponibili</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Mezzi in transito</MudText>
+                <MudText Typo="Typo.h3">@_inTransito</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2">
+                <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Mezzi in manutenzione</MudText>
+                <MudText Typo="Typo.h3">@_inManutenzione</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Class="pa-4" Elevation="2" Style="@(_alertCount > 0 ? "border-left: 4px solid var(--mud-palette-error)" : "")">
+                <MudText Typo="Typo.subtitle2" Color="Color.Secondary">Alert scadenze</MudText>
+                <MudText Typo="Typo.h3" Color="@(_alertCount > 0 ? Color.Error : Color.Default)">@_alertCount</MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <MudText Typo="Typo.h5" Class="mt-8 mb-2">Scadenze manutenzione</MudText>
+
+    @if (_statoFlotta.Count == 0)
+    {
+        <MudText Color="Color.Secondary">Nessun mezzo censito.</MudText>
+    }
+    else
+    {
+        <MudTable Items="_statoFlotta" Hover="true" Dense="true">
+            <HeaderContent>
+                <MudTh>Targa</MudTh>
+                <MudTh>Marca / Modello</MudTh>
+                <MudTh>Km attuali</MudTh>
+                <MudTh>Km residui a manutenzione</MudTh>
+                <MudTh>Stato</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Targa">@context.Mezzo.Targa</MudTd>
+                <MudTd DataLabel="Marca / Modello">@context.Mezzo.Marca @context.Mezzo.Modello</MudTd>
+                <MudTd DataLabel="Km attuali">@context.Mezzo.ChilometraggioAttuale</MudTd>
+                <MudTd DataLabel="Km residui">@context.KmResidui</MudTd>
+                <MudTd DataLabel="Stato">
+                    <MudChip T="string" Color="@StatoColor(context.Stato)" Size="Size.Small">@StatoLabel(context.Stato)</MudChip>
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+}
+
+@code {
+    private bool _loading = true;
+    private int _disponibili;
+    private int _inTransito;
+    private int _inManutenzione;
+    private int _alertCount;
+    private List<MezzoStatoManutenzioneDto> _statoFlotta = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var mezzi = await MezzoService.GetAllAsync();
+        _disponibili = mezzi.Count(m => m.Stato == StatoMezzo.Disponibile);
+        _inTransito = mezzi.Count(m => m.Stato == StatoMezzo.InTransito);
+        _inManutenzione = mezzi.Count(m => m.Stato == StatoMezzo.InManutenzione);
+
+        _statoFlotta = await ManutenzioneService.GetStatoManutenzioneFlottaAsync();
+        _alertCount = _statoFlotta.Count(x => x.Stato is StatoManutenzione.Imminente or StatoManutenzione.Scaduta);
+
+        _loading = false;
+    }
+
+    private static Color StatoColor(StatoManutenzione stato) => stato switch
+    {
+        StatoManutenzione.Scaduta => Color.Error,
+        StatoManutenzione.Imminente => Color.Warning,
+        _ => Color.Success
+    };
+
+    private static string StatoLabel(StatoManutenzione stato) => stato switch
+    {
+        StatoManutenzione.Scaduta => "Scaduta",
+        StatoManutenzione.Imminente => "Imminente",
+        _ => "In regola"
+    };
+}

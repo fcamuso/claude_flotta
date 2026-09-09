@@ -1,0 +1,20 @@
+<MudDialog>
+    <DialogContent>
+        <MudText Class="mb-4">Inserisci i chilometri percorsi durante la tratta. Verranno aggiunti automaticamente al chilometraggio del mezzo.</MudText>
+        <MudNumericField @bind-Value="_km" Label="Km percorsi" Min="0" Required="true" RequiredError="Inserisci i km percorsi." Immediate="true" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Annulla</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Submit">Conferma chiusura</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    private int _km;
+
+    private void Submit() => MudDialog.Close(DialogResult.Ok(_km));
+
+    private void Cancel() => MudDialog.Cancel();
+}

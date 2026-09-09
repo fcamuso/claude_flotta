@@ -1,0 +1,48 @@
+@using FlottaGestionale.Domain.Entities
+
+<MudDialog>
+    <DialogContent>
+        <MudForm @ref="_form" Model="Model">
+            <MudTextField @bind-Value="Model.Nome" Label="Nome" Required="true" RequiredError="Il nome è obbligatorio." />
+            <MudTextField @bind-Value="Model.Cognome" Label="Cognome" Required="true" RequiredError="Il cognome è obbligatorio." />
+            <MudTextField @bind-Value="Model.CodiceFiscale" Label="Codice fiscale" MaxLength="16" />
+            <MudTextField @bind-Value="Model.NumeroPatente" Label="Numero patente" Required="true" RequiredError="Il numero patente è obbligatorio." />
+            <MudTextField @bind-Value="Model.CategoriaPatente" Label="Categoria patente" MaxLength="10" />
+            <MudDatePicker @bind-Date="_dataScadenzaPatente" Label="Scadenza patente" />
+            <MudTextField @bind-Value="Model.Telefono" Label="Telefono" />
+            <MudTextField @bind-Value="Model.Email" Label="Email" InputType="InputType.Email" />
+            <MudSwitch @bind-Value="Model.Attivo" Label="Attivo" Color="Color.Primary" Class="mt-2" />
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Annulla</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SubmitAsync">Salva</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public Autista Model { get; set; } = new();
+
+    private MudForm _form = null!;
+    private DateTime? _dataScadenzaPatente;
+
+    protected override void OnInitialized()
+    {
+        _dataScadenzaPatente = Model.DataScadenzaPatente?.ToDateTime(TimeOnly.MinValue);
+    }
+
+    private async Task SubmitAsync()
+    {
+        await _form.ValidateAsync();
+        if (!_form.IsValid)
+        {
+            return;
+        }
+
+        Model.DataScadenzaPatente = _dataScadenzaPatente is null ? null : DateOnly.FromDateTime(_dataScadenzaPatente.Value);
+        MudDialog.Close(DialogResult.Ok(Model));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}

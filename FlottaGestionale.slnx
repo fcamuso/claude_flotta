@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/FlottaGestionale.Application/FlottaGestionale.Application.csproj" />
+    <Project Path="src/FlottaGestionale.Domain/FlottaGestionale.Domain.csproj" />
+    <Project Path="src/FlottaGestionale.Infrastructure.MySqlMigrations/FlottaGestionale.Infrastructure.MySqlMigrations.csproj" />
+    <Project Path="src/FlottaGestionale.Infrastructure.SqliteMigrations/FlottaGestionale.Infrastructure.SqliteMigrations.csproj" />
+    <Project Path="src/FlottaGestionale.Infrastructure/FlottaGestionale.Infrastructure.csproj" />
+    <Project Path="src/FlottaGestionale.Web/FlottaGestionale.Web.csproj" />
+  </Folder>
+</Solution>

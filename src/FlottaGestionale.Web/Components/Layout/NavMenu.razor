@@ -1,0 +1,29 @@
+<MudNavMenu>
+    <AuthorizeView Roles="Admin,Logistica">
+        <Authorized>
+            <MudNavLink Href="" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard">Dashboard</MudNavLink>
+
+            <MudNavGroup Title="Anagrafiche" Icon="@Icons.Material.Filled.Folder" Expanded="true">
+                <MudNavLink Href="autisti" Icon="@Icons.Material.Filled.Badge">Autisti</MudNavLink>
+                <MudNavLink Href="mezzi" Icon="@Icons.Material.Filled.LocalShipping">Mezzi</MudNavLink>
+                <MudNavLink Href="clienti" Icon="@Icons.Material.Filled.Business">Clienti</MudNavLink>
+                <MudNavLink Href="destinazioni" Icon="@Icons.Material.Filled.Place">Destinazioni</MudNavLink>
+            </MudNavGroup>
+
+            <MudNavGroup Title="Operatività" Icon="@Icons.Material.Filled.Route" Expanded="true">
+                <MudNavLink Href="tratte" Icon="@Icons.Material.Filled.AltRoute">Tratte</MudNavLink>
+                <MudNavLink Href="storico-mezzi" Icon="@Icons.Material.Filled.Build">Storico Mezzi</MudNavLink>
+            </MudNavGroup>
+        </Authorized>
+    </AuthorizeView>
+
+    <MudNavLink Href="le-mie-tratte" Icon="@Icons.Material.Filled.PersonPin">Le mie tratte</MudNavLink>
+
+    <AuthorizeView Roles="Admin">
+        <Authorized>
+            <MudNavGroup Title="Amministrazione" Icon="@Icons.Material.Filled.AdminPanelSettings" Expanded="true">
+                <MudNavLink Href="utenti" Icon="@Icons.Material.Filled.People">Utenti</MudNavLink>
+            </MudNavGroup>
+        </Authorized>
+    </AuthorizeView>
+</MudNavMenu>

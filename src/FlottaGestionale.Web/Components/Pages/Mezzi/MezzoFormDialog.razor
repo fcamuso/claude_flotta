@@ -1,0 +1,56 @@
+@using FlottaGestionale.Domain.Entities
+@using FlottaGestionale.Domain.Enums
+
+<MudDialog>
+    <DialogContent>
+        <MudForm @ref="_form" Model="Model">
+            <MudTextField @bind-Value="Model.Targa" Label="Targa" Required="true" RequiredError="La targa è obbligatoria." />
+            <MudTextField @bind-Value="Model.Marca" Label="Marca" Required="true" RequiredError="La marca è obbligatoria." />
+            <MudTextField @bind-Value="Model.Modello" Label="Modello" Required="true" RequiredError="Il modello è obbligatorio." />
+            <MudNumericField @bind-Value="Model.Anno" Label="Anno" Min="1980" Max="@(DateTime.Now.Year + 1)" Immediate="true" />
+            <MudNumericField @bind-Value="Model.ChilometraggioAttuale" Label="Chilometraggio attuale" Min="0" Immediate="true" />
+            <MudNumericField @bind-Value="Model.ChilometraggioUltimaManutenzione" Label="Km ultima manutenzione" Min="0" Immediate="true" />
+            <MudNumericField @bind-Value="Model.IntervalloManutenzioneKm" Label="Intervallo manutenzione (km)" Min="1000" Immediate="true" />
+            <MudSelect T="StatoMezzo" @bind-Value="Model.Stato" Label="Stato">
+                @foreach (var stato in Enum.GetValues<StatoMezzo>())
+                {
+                    <MudSelectItem T="StatoMezzo" Value="@stato">@StatoLabel(stato)</MudSelectItem>
+                }
+            </MudSelect>
+            <MudSwitch @bind-Value="Model.Attivo" Label="Attivo" Color="Color.Primary" Class="mt-2" />
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Annulla</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SubmitAsync">Salva</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public Mezzo Model { get; set; } = new();
+
+    private MudForm _form = null!;
+
+    private async Task SubmitAsync()
+    {
+        await _form.ValidateAsync();
+        if (!_form.IsValid)
+        {
+            return;
+        }
+
+        MudDialog.Close(DialogResult.Ok(Model));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private static string StatoLabel(StatoMezzo stato) => stato switch
+    {
+        StatoMezzo.Disponibile => "Disponibile",
+        StatoMezzo.InTransito => "In transito",
+        StatoMezzo.InManutenzione => "In manutenzione",
+        StatoMezzo.FuoriServizio => "Fuori servizio",
+        _ => stato.ToString()
+    };
+}

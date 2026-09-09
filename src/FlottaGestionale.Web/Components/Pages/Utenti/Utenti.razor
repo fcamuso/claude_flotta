@@ -1,0 +1,176 @@
+@page "/utenti"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin")]
+@using FlottaGestionale.Application.Interfaces
+@using FlottaGestionale.Domain.Entities
+@using FlottaGestionale.Infrastructure.Identity
+@using Microsoft.AspNetCore.Identity
+@inject UserManager<ApplicationUser> UserManager
+@inject IAutistaService AutistaService
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<PageTitle>Utenti</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Utenti</MudText>
+
+<MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" Class="mb-4" OnClick="() => OpenDialogAsync(null)">
+    Nuovo utente
+</MudButton>
+
+@if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else
+{
+    <MudTable Items="_utenti" Hover="true">
+        <HeaderContent>
+            <MudTh>Email</MudTh>
+            <MudTh>Ruolo</MudTh>
+            <MudTh>Autista collegato</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Email">@context.User.Email</MudTd>
+            <MudTd DataLabel="Ruolo">@context.Ruolo</MudTd>
+            <MudTd DataLabel="Autista collegato">
+                @(context.Autista is not null ? $"{context.Autista.Cognome} {context.Autista.Nome}" : "-")
+            </MudTd>
+            <MudTd>
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="() => OpenDialogAsync(context)" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="() => DeleteAsync(context)" />
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    private record UtenteRow(ApplicationUser User, string Ruolo, Autista? Autista);
+
+    private List<UtenteRow> _utenti = [];
+    private List<Autista> _autisti = [];
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _autisti = (await AutistaService.GetAllAsync()).Where(a => a.Attivo).ToList();
+
+        var utenti = UserManager.Users.ToList();
+        var righe = new List<UtenteRow>();
+        foreach (var utente in utenti)
+        {
+            var ruoli = await UserManager.GetRolesAsync(utente);
+            var autista = utente.AutistaId is not null ? await AutistaService.GetByIdAsync(utente.AutistaId.Value) : null;
+            righe.Add(new UtenteRow(utente, ruoli.FirstOrDefault() ?? "-", autista));
+        }
+
+        _utenti = righe.OrderBy(r => r.User.Email).ToList();
+        _loading = false;
+    }
+
+    private async Task OpenDialogAsync(UtenteRow? riga)
+    {
+        var parameters = new DialogParameters<UtenteFormDialog>
+        {
+            { x => x.IsEdit, riga is not null },
+            { x => x.Email, riga?.User.Email ?? string.Empty },
+            { x => x.Ruolo, riga?.Ruolo ?? "Logistica" },
+            { x => x.AutistaId, riga?.User.AutistaId },
+            { x => x.Autisti, _autisti }
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<UtenteFormDialog>(riga is null ? "Nuovo utente" : "Modifica utente", parameters, options);
+        var result = await dialog.Result;
+
+        if (result is null || result.Canceled)
+        {
+            return;
+        }
+
+        var data = (UtenteFormDialog.UtenteFormResult)result.Data!;
+
+        try
+        {
+            if (riga is null)
+            {
+                await CreaUtenteAsync(data);
+            }
+            else
+            {
+                await AggiornaUtenteAsync(riga.User, riga.Ruolo, data);
+            }
+
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Errore: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task CreaUtenteAsync(UtenteFormDialog.UtenteFormResult data)
+    {
+        var utente = new ApplicationUser
+        {
+            UserName = data.Email,
+            Email = data.Email,
+            EmailConfirmed = true,
+            AutistaId = data.AutistaId
+        };
+
+        var result = await UserManager.CreateAsync(utente, data.Password!);
+        if (!result.Succeeded)
+        {
+            Snackbar.Add(string.Join(" ", result.Errors.Select(e => e.Description)), Severity.Error);
+            return;
+        }
+
+        await UserManager.AddToRoleAsync(utente, data.Ruolo);
+        Snackbar.Add("Utente creato.", Severity.Success);
+    }
+
+    private async Task AggiornaUtenteAsync(ApplicationUser utente, string ruoloAttuale, UtenteFormDialog.UtenteFormResult data)
+    {
+        utente.AutistaId = data.AutistaId;
+        await UserManager.UpdateAsync(utente);
+
+        if (ruoloAttuale != data.Ruolo)
+        {
+            if (ruoloAttuale != "-")
+            {
+                await UserManager.RemoveFromRoleAsync(utente, ruoloAttuale);
+            }
+
+            await UserManager.AddToRoleAsync(utente, data.Ruolo);
+        }
+
+        Snackbar.Add("Utente aggiornato.", Severity.Success);
+    }
+
+    private async Task DeleteAsync(UtenteRow riga)
+    {
+        var confirm = await DialogService.ShowMessageBoxAsync(
+            "Conferma eliminazione",
+            $"Eliminare l'utente {riga.User.Email}?",
+            yesText: "Elimina", cancelText: "Annulla");
+
+        if (confirm != true)
+        {
+            return;
+        }
+
+        try
+        {
+            await UserManager.DeleteAsync(riga.User);
+            Snackbar.Add("Utente eliminato.", Severity.Success);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Errore: {ex.Message}", Severity.Error);
+        }
+    }
+}

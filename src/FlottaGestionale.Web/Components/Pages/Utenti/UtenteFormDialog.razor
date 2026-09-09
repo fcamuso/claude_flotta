@@ -1,0 +1,78 @@
+@using FlottaGestionale.Domain.Entities
+@using FlottaGestionale.Infrastructure.Identity
+
+<MudDialog>
+    <DialogContent>
+        <MudForm @ref="_form">
+            @if (!IsEdit)
+            {
+                <MudTextField @bind-Value="_email" Label="Email" InputType="InputType.Email" Required="true" RequiredError="L'email è obbligatoria." />
+                <MudTextField @bind-Value="_password" Label="Password" InputType="InputType.Password" Required="true" RequiredError="La password è obbligatoria." HelperText="Almeno 6 caratteri." />
+            }
+            else
+            {
+                <MudTextField Value="@Email" Label="Email" ReadOnly="true" Disabled="true" />
+            }
+
+            <MudSelect T="string" @bind-Value="_ruolo" Label="Ruolo" Required="true">
+                <MudSelectItem T="string" Value="@("Admin")">Amministratore</MudSelectItem>
+                <MudSelectItem T="string" Value="@("Logistica")">Logistica</MudSelectItem>
+                <MudSelectItem T="string" Value="@("Autista")">Autista</MudSelectItem>
+            </MudSelect>
+
+            @if (_ruolo == "Autista")
+            {
+                <MudSelect T="int?" @bind-Value="_autistaId" Label="Autista collegato" Clearable="true"
+                          HelperText="@(Autisti.Count == 0 ? "Nessun autista disponibile da collegare." : null)">
+                    @foreach (var a in Autisti)
+                    {
+                        <MudSelectItem T="int?" Value="@((int?)a.Id)">@a.Cognome @a.Nome</MudSelectItem>
+                    }
+                </MudSelect>
+            }
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Annulla</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SubmitAsync">Salva</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter] public bool IsEdit { get; set; }
+    [Parameter] public string Email { get; set; } = string.Empty;
+    [Parameter] public string Ruolo { get; set; } = "Logistica";
+    [Parameter] public int? AutistaId { get; set; }
+    [Parameter] public List<Autista> Autisti { get; set; } = [];
+
+    private MudForm _form = null!;
+    private string _email = string.Empty;
+    private string _password = string.Empty;
+    private string _ruolo = "Logistica";
+    private int? _autistaId;
+
+    protected override void OnInitialized()
+    {
+        _email = Email;
+        _ruolo = Ruolo;
+        _autistaId = AutistaId;
+    }
+
+    private async Task SubmitAsync()
+    {
+        await _form.ValidateAsync();
+        if (!_form.IsValid)
+        {
+            return;
+        }
+
+        var autistaId = _ruolo == "Autista" ? _autistaId : null;
+        MudDialog.Close(DialogResult.Ok(new UtenteFormResult(_email, IsEdit ? null : _password, _ruolo, autistaId)));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    public record UtenteFormResult(string Email, string? Password, string Ruolo, int? AutistaId);
+}

@@ -1,0 +1,153 @@
+@page "/destinazioni"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin,Logistica")]
+@using FlottaGestionale.Application.Interfaces
+@using FlottaGestionale.Domain.Entities
+@inject IDestinazioneService DestinazioneService
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<PageTitle>Destinazioni</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Destinazioni</MudText>
+
+<MudPaper Class="pa-4 mb-4" Elevation="2">
+    <MudGrid Class="align-center">
+        <MudItem xs="12" sm="8">
+            <MudTextField T="string" Value="_searchTerm" ValueChanged="OnSearchChangedAsync" Label="Cerca per denominazione o città"
+                          Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Immediate="true" DebounceInterval="300" />
+        </MudItem>
+        <MudItem xs="12" sm="4" Class="d-flex justify-end">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="() => OpenDialogAsync(null)">
+                Nuova destinazione
+            </MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else if (_destinazioni.Count == 0)
+{
+    <MudText Color="Color.Secondary">Nessuna destinazione trovata.</MudText>
+}
+else
+{
+    <MudTable Items="_destinazioni" Hover="true">
+        <HeaderContent>
+            <MudTh>Denominazione</MudTh>
+            <MudTh>Indirizzo</MudTh>
+            <MudTh>Città</MudTh>
+            <MudTh>Stato</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd DataLabel="Denominazione">@context.Denominazione</MudTd>
+            <MudTd DataLabel="Indirizzo">@context.Indirizzo</MudTd>
+            <MudTd DataLabel="Città">@context.Citta @context.Provincia</MudTd>
+            <MudTd DataLabel="Stato">
+                <MudChip T="string" Color="@(context.Attivo ? Color.Success : Color.Default)" Size="Size.Small">
+                    @(context.Attivo ? "Attiva" : "Non attiva")
+                </MudChip>
+            </MudTd>
+            <MudTd>
+                <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="() => OpenDialogAsync(context)" />
+                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="() => DeleteAsync(context)" />
+            </MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    private List<Destinazione> _destinazioni = [];
+    private bool _loading = true;
+    private string _searchTerm = string.Empty;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _destinazioni = await DestinazioneService.GetAllAsync(_searchTerm);
+        _loading = false;
+    }
+
+    private async Task OnSearchChangedAsync(string value)
+    {
+        _searchTerm = value;
+        await LoadAsync();
+    }
+
+    private async Task OpenDialogAsync(Destinazione? destinazione)
+    {
+        var parameters = new DialogParameters<DestinazioneFormDialog>
+        {
+            { x => x.Model, destinazione is null ? new Destinazione() : Clone(destinazione) }
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<DestinazioneFormDialog>(destinazione is null ? "Nuova destinazione" : "Modifica destinazione", parameters, options);
+        var result = await dialog.Result;
+
+        if (result is null || result.Canceled)
+        {
+            return;
+        }
+
+        try
+        {
+            if (destinazione is null)
+            {
+                await DestinazioneService.CreateAsync((Destinazione)result.Data!);
+                Snackbar.Add("Destinazione creata.", Severity.Success);
+            }
+            else
+            {
+                await DestinazioneService.UpdateAsync((Destinazione)result.Data!);
+                Snackbar.Add("Destinazione aggiornata.", Severity.Success);
+            }
+
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Errore: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task DeleteAsync(Destinazione destinazione)
+    {
+        var confirm = await DialogService.ShowMessageBoxAsync(
+            "Conferma eliminazione",
+            $"Eliminare la destinazione {destinazione.Denominazione}?",
+            yesText: "Elimina", cancelText: "Annulla");
+
+        if (confirm != true)
+        {
+            return;
+        }
+
+        try
+        {
+            await DestinazioneService.DeleteAsync(destinazione.Id);
+            Snackbar.Add("Destinazione eliminata.", Severity.Success);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Errore: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private static Destinazione Clone(Destinazione source) => new()
+    {
+        Id = source.Id,
+        Denominazione = source.Denominazione,
+        Indirizzo = source.Indirizzo,
+        Citta = source.Citta,
+        Cap = source.Cap,
+        Provincia = source.Provincia,
+        Note = source.Note,
+        Attivo = source.Attivo
+    };
+}

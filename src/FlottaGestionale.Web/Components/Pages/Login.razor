@@ -1,0 +1,102 @@
+@page "/login"
+@layout Layout.LoginLayout
+@attribute [ExcludeFromInteractiveRouting]
+@attribute [Microsoft.AspNetCore.Authorization.AllowAnonymous]
+@using System.ComponentModel.DataAnnotations
+@using System.Security.Claims
+@using FlottaGestionale.Infrastructure.Identity
+@using Microsoft.AspNetCore.Identity
+@inject SignInManager<ApplicationUser> SignInManager
+@inject UserManager<ApplicationUser> UserManager
+@inject NavigationManager NavigationManager
+
+<PageTitle>Accedi</PageTitle>
+
+<div class="login-page">
+    <div class="login-card">
+        <h1>Gestionale Flotta</h1>
+        <h2>Accedi</h2>
+
+        @if (_errorMessage is not null)
+        {
+            <p class="login-error">@_errorMessage</p>
+        }
+
+        <EditForm Model="Input" FormName="login" OnValidSubmit="LoginAsync" method="post">
+            <DataAnnotationsValidator />
+
+            <div class="login-field">
+                <label for="email">Email</label>
+                <InputText id="email" @bind-Value="Input.Email" class="login-input" autocomplete="username" />
+            </div>
+            <div class="login-field">
+                <label for="password">Password</label>
+                <InputText id="password" type="password" @bind-Value="Input.Password" class="login-input" autocomplete="current-password" />
+            </div>
+
+            <button type="submit" class="login-button">Accedi</button>
+        </EditForm>
+    </div>
+</div>
+
+<style>
+    .login-page { display: flex; align-items: center; justify-content: center; min-height: 100vh; background: #f5f5f5; }
+    .login-card { background: white; padding: 2.5rem; border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,0.1); width: 100%; max-width: 360px; }
+    .login-card h1 { font-size: 1.25rem; margin: 0 0 0.25rem; color: #1b6ec2; }
+    .login-card h2 { font-size: 1rem; margin: 0 0 1.5rem; color: #555; font-weight: normal; }
+    .login-field { margin-bottom: 1rem; }
+    .login-field label { display: block; margin-bottom: 0.25rem; font-size: 0.875rem; color: #333; }
+    .login-input { width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+    .login-button { width: 100%; padding: 0.6rem; background: #1b6ec2; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 1rem; }
+    .login-button:hover { background: #155a9e; }
+    .login-error { color: #b00020; background: #fdecea; padding: 0.5rem 0.75rem; border-radius: 4px; margin-bottom: 1rem; font-size: 0.875rem; }
+</style>
+
+@code {
+    [SupplyParameterFromForm]
+    private LoginInputModel Input { get; set; } = new();
+
+    [SupplyParameterFromQuery]
+    private string? ReturnUrl { get; set; }
+
+    private string? _errorMessage;
+
+    protected override void OnInitialized()
+    {
+        Input ??= new();
+    }
+
+    private async Task LoginAsync()
+    {
+        var result = await SignInManager.PasswordSignInAsync(Input.Email, Input.Password, isPersistent: true, lockoutOnFailure: false);
+        if (!result.Succeeded)
+        {
+            _errorMessage = "Email o password non corretti.";
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(ReturnUrl))
+        {
+            NavigationManager.NavigateTo(ReturnUrl, forceLoad: true);
+            return;
+        }
+
+        var user = await UserManager.FindByEmailAsync(Input.Email);
+        var roles = user is null ? [] : await UserManager.GetRolesAsync(user);
+        var destinazione = roles.Contains("Autista") && !roles.Contains("Admin") && !roles.Contains("Logistica")
+            ? "/le-mie-tratte"
+            : "/";
+
+        NavigationManager.NavigateTo(destinazione, forceLoad: true);
+    }
+
+    private class LoginInputModel
+    {
+        [Required(ErrorMessage = "Inserisci l'email.")]
+        [EmailAddress(ErrorMessage = "Email non valida.")]
+        public string Email { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Inserisci la password.")]
+        public string Password { get; set; } = string.Empty;
+    }
+}

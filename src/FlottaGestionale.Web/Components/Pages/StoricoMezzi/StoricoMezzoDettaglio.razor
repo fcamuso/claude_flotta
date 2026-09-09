@@ -1,0 +1,214 @@
+@page "/mezzi/{Id:int}/storico"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin,Logistica")]
+@using FlottaGestionale.Application.Interfaces
+@using FlottaGestionale.Domain.Entities
+@using FlottaGestionale.Domain.Enums
+@using FlottaGestionale.Domain.Services
+@inject IMezzoService MezzoService
+@inject IManutenzioneService ManutenzioneService
+@inject ITrattaService TrattaService
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<PageTitle>Storico mezzo</PageTitle>
+
+@if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else if (_mezzo is null)
+{
+    <MudText Color="Color.Error">Mezzo non trovato.</MudText>
+}
+else
+{
+    var stato = ManutenzioneCalculator.CalcolaStato(_mezzo);
+    var kmResidui = ManutenzioneCalculator.CalcolaKmResiduiManutenzione(_mezzo);
+
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+        <MudText Typo="Typo.h4">@_mezzo.Targa — @_mezzo.Marca @_mezzo.Modello</MudText>
+        <MudChip T="string" Color="@StatoColor(stato)" Size="Size.Medium">@StatoLabel(stato)</MudChip>
+    </MudStack>
+
+    <MudPaper Class="pa-4 mb-4" Elevation="2">
+        <MudGrid>
+            <MudItem xs="6" sm="3">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Km attuali</MudText>
+                <MudText>@_mezzo.ChilometraggioAttuale</MudText>
+            </MudItem>
+            <MudItem xs="6" sm="3">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Km ultima manutenzione</MudText>
+                <MudText>@_mezzo.ChilometraggioUltimaManutenzione</MudText>
+            </MudItem>
+            <MudItem xs="6" sm="3">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Prossima manutenzione a km</MudText>
+                <MudText>@ManutenzioneCalculator.CalcolaProssimaManutenzioneKm(_mezzo)</MudText>
+            </MudItem>
+            <MudItem xs="6" sm="3">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Km residui</MudText>
+                <MudText Color="@(kmResidui <= 0 ? Color.Error : kmResidui <= ManutenzioneCalculator.SogliaAllertaKm ? Color.Warning : Color.Default)">
+                    @kmResidui
+                </MudText>
+            </MudItem>
+        </MudGrid>
+
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" Class="mt-4" OnClick="OpenRegistraEventoDialogAsync">
+            Registra intervento
+        </MudButton>
+    </MudPaper>
+
+    <MudText Typo="Typo.h5" Class="mb-2">Storico interventi</MudText>
+    @if (_storico.Count == 0)
+    {
+        <MudText Color="Color.Secondary" Class="mb-4">Nessun intervento registrato.</MudText>
+    }
+    else
+    {
+        <MudTable Items="_storico" Hover="true" Dense="true" Class="mb-6">
+            <HeaderContent>
+                <MudTh>Data</MudTh>
+                <MudTh>Tipo</MudTh>
+                <MudTh>Km</MudTh>
+                <MudTh>Descrizione</MudTh>
+                <MudTh>Costo</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Data">@context.Data.ToString("dd/MM/yyyy")</MudTd>
+                <MudTd DataLabel="Tipo">
+                    <MudChip T="string" Size="Size.Small" Color="@TipoColor(context.TipoEvento)">@TipoLabel(context.TipoEvento)</MudChip>
+                </MudTd>
+                <MudTd DataLabel="Km">@context.ChilometraggioEvento</MudTd>
+                <MudTd DataLabel="Descrizione">@context.Descrizione</MudTd>
+                <MudTd DataLabel="Costo">@(context.Costo is not null ? context.Costo.Value.ToString("C") : "-")</MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+
+    <MudText Typo="Typo.h5" Class="mb-2">Storico tratte</MudText>
+    @if (_tratte.Count == 0)
+    {
+        <MudText Color="Color.Secondary">Nessuna tratta registrata per questo mezzo.</MudText>
+    }
+    else
+    {
+        <MudTable Items="_tratte" Hover="true" Dense="true">
+            <HeaderContent>
+                <MudTh>Data</MudTh>
+                <MudTh>Autista</MudTh>
+                <MudTh>Cliente</MudTh>
+                <MudTh>Stato</MudTh>
+                <MudTh>Km percorsi</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Data">@context.DataPianificata.ToString("dd/MM/yyyy")</MudTd>
+                <MudTd DataLabel="Autista">@context.Autista.Cognome @context.Autista.Nome</MudTd>
+                <MudTd DataLabel="Cliente">@context.Cliente.RagioneSociale</MudTd>
+                <MudTd DataLabel="Stato">@TrattaStatoLabel(context.Stato)</MudTd>
+                <MudTd DataLabel="Km percorsi">@(context.KmPercorsi?.ToString() ?? "-")</MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private Mezzo? _mezzo;
+    private List<StoricoMezzo> _storico = [];
+    private List<Tratta> _tratte = [];
+    private bool _loading = true;
+
+    protected override async Task OnParametersSetAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _mezzo = await MezzoService.GetByIdAsync(Id);
+
+        if (_mezzo is not null)
+        {
+            _storico = await ManutenzioneService.GetStoricoAsync(Id);
+            var tutteLeTratte = await TrattaService.GetAllAsync();
+            _tratte = tutteLeTratte
+                .Where(t => t.MezzoId == Id)
+                .OrderByDescending(t => t.DataPianificata)
+                .ToList();
+        }
+
+        _loading = false;
+    }
+
+    private async Task OpenRegistraEventoDialogAsync()
+    {
+        if (_mezzo is null)
+        {
+            return;
+        }
+
+        var parameters = new DialogParameters<RegistraEventoDialog>
+        {
+            { x => x.MezzoId, _mezzo.Id },
+            { x => x.ChilometraggioAttualeMezzo, _mezzo.ChilometraggioAttuale }
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<RegistraEventoDialog>("Registra intervento", parameters, options);
+        var result = await dialog.Result;
+
+        if (result is null || result.Canceled)
+        {
+            return;
+        }
+
+        try
+        {
+            var evento = (StoricoMezzo)result.Data!;
+            await ManutenzioneService.RegistraEventoAsync(evento);
+            Snackbar.Add("Intervento registrato.", Severity.Success);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Errore: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private static Color StatoColor(StatoManutenzione stato) => stato switch
+    {
+        StatoManutenzione.Scaduta => Color.Error,
+        StatoManutenzione.Imminente => Color.Warning,
+        _ => Color.Success
+    };
+
+    private static string StatoLabel(StatoManutenzione stato) => stato switch
+    {
+        StatoManutenzione.Scaduta => "Scaduta",
+        StatoManutenzione.Imminente => "Imminente",
+        _ => "In regola"
+    };
+
+    private static Color TipoColor(TipoEventoStorico tipo) => tipo switch
+    {
+        TipoEventoStorico.Sinistro => Color.Error,
+        TipoEventoStorico.Manutenzione => Color.Primary,
+        TipoEventoStorico.Revisione => Color.Info,
+        _ => Color.Default
+    };
+
+    private static string TipoLabel(TipoEventoStorico tipo) => tipo switch
+    {
+        TipoEventoStorico.Manutenzione => "Manutenzione",
+        TipoEventoStorico.Revisione => "Revisione",
+        TipoEventoStorico.Sinistro => "Sinistro",
+        TipoEventoStorico.AltroIntervento => "Altro intervento",
+        _ => tipo.ToString()
+    };
+
+    private static string TrattaStatoLabel(StatoTratta stato) => stato switch
+    {
+        StatoTratta.Pianificata => "Pianificata",
+        StatoTratta.InCorso => "In corso",
+        StatoTratta.Completata => "Completata",
+        StatoTratta.Annullata => "Annullata",
+        _ => stato.ToString()
+    };
+}

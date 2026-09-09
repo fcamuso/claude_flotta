@@ -1,0 +1,225 @@
+@page "/tratte/{Id:int}"
+@using FlottaGestionale.Application.Interfaces
+@using FlottaGestionale.Domain.Entities
+@using FlottaGestionale.Domain.Enums
+@inject ITrattaService TrattaService
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<PageTitle>Tratta @Id</PageTitle>
+
+@if (_loading)
+{
+    <MudProgressCircular Indeterminate="true" />
+}
+else if (_tratta is null)
+{
+    <MudText Color="Color.Error">Tratta non trovata.</MudText>
+}
+else
+{
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+        <MudText Typo="Typo.h4">Tratta #@_tratta.Id</MudText>
+        <MudChip T="string" Color="@StatoColor(_tratta.Stato)" Size="Size.Medium">@StatoLabel(_tratta.Stato)</MudChip>
+    </MudStack>
+
+    <MudPaper Class="pa-4 mb-4" Elevation="2">
+        <MudGrid>
+            <MudItem xs="12" sm="6" md="3">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Autista</MudText>
+                <MudText>@_tratta.Autista.Cognome @_tratta.Autista.Nome</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Mezzo</MudText>
+                <MudText>@_tratta.Mezzo.Targa</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Cliente</MudText>
+                <MudText>@_tratta.Cliente.RagioneSociale</MudText>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Data pianificata</MudText>
+                <MudText>@_tratta.DataPianificata.ToString("dd/MM/yyyy")</MudText>
+            </MudItem>
+            @if (_tratta.KmPercorsi is not null)
+            {
+                <MudItem xs="12" sm="6" md="3">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Km percorsi</MudText>
+                    <MudText>@_tratta.KmPercorsi</MudText>
+                </MudItem>
+            }
+            @if (!string.IsNullOrWhiteSpace(_tratta.Note))
+            {
+                <MudItem xs="12">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Note</MudText>
+                    <MudText>@_tratta.Note</MudText>
+                </MudItem>
+            }
+        </MudGrid>
+
+        <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="2" Class="mt-4">
+            @if (_tratta.Stato == StatoTratta.Pianificata)
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PlayArrow" OnClick="AvviaAsync">
+                    Avvia tratta
+                </MudButton>
+            }
+            @if (_tratta.Stato == StatoTratta.InCorso)
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.CheckCircle" OnClick="ChiudiAsync">
+                    Chiudi tratta
+                </MudButton>
+            }
+            @if (_tratta.Stato is StatoTratta.Pianificata or StatoTratta.InCorso)
+            {
+                <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="AnnullaAsync">Annulla tratta</MudButton>
+            }
+        </MudStack>
+    </MudPaper>
+
+    <MudText Typo="Typo.h5" Class="mb-2">Tappe</MudText>
+
+    <MudStack Spacing="2">
+        @foreach (var tappa in _tratta.Tappe.OrderBy(t => t.Ordine))
+        {
+            <MudPaper Class="pa-3" Elevation="1">
+                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
+                    <div>
+                        <MudText Typo="Typo.subtitle1">@tappa.Ordine. @tappa.Destinazione.Denominazione</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">@tappa.Destinazione.Indirizzo @tappa.Destinazione.Citta</MudText>
+                        @if (tappa.DataOraCompletamento is not null)
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                Completata il @tappa.DataOraCompletamento.Value.ToString("dd/MM/yyyy HH:mm")
+                            </MudText>
+                        }
+                    </div>
+                    @if (tappa.Stato == StatoTappa.Completata)
+                    {
+                        <MudChip T="string" Color="Color.Success" Size="Size.Small">Completata</MudChip>
+                    }
+                    else if (_tratta.Stato == StatoTratta.InCorso)
+                    {
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" OnClick="() => CompletaTappaAsync(tappa.Id)">
+                            Segna completata
+                        </MudButton>
+                    }
+                    else
+                    {
+                        <MudChip T="string" Size="Size.Small">Da completare</MudChip>
+                    }
+                </MudStack>
+            </MudPaper>
+        }
+    </MudStack>
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private Tratta? _tratta;
+    private bool _loading = true;
+
+    protected override async Task OnParametersSetAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _tratta = await TrattaService.GetByIdAsync(Id);
+        _loading = false;
+    }
+
+    private async Task AvviaAsync()
+    {
+        try
+        {
+            await TrattaService.AvviaTrattaAsync(Id);
+            Snackbar.Add("Tratta avviata.", Severity.Success);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Errore: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task CompletaTappaAsync(int tappaId)
+    {
+        try
+        {
+            await TrattaService.CompletaTappaAsync(tappaId);
+            Snackbar.Add("Tappa completata.", Severity.Success);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Errore: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task ChiudiAsync()
+    {
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.ExtraSmall, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<ChiudiTrattaDialog>("Chiudi tratta", options);
+        var result = await dialog.Result;
+
+        if (result is null || result.Canceled)
+        {
+            return;
+        }
+
+        try
+        {
+            var km = (int)result.Data!;
+            await TrattaService.ChiudiTrattaAsync(Id, km);
+            Snackbar.Add("Tratta chiusa.", Severity.Success);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Errore: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task AnnullaAsync()
+    {
+        var confirm = await DialogService.ShowMessageBoxAsync(
+            "Conferma annullamento",
+            "Annullare questa tratta?",
+            yesText: "Annulla tratta", cancelText: "Chiudi");
+
+        if (confirm != true)
+        {
+            return;
+        }
+
+        try
+        {
+            await TrattaService.AnnullaTrattaAsync(Id);
+            Snackbar.Add("Tratta annullata.", Severity.Success);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Errore: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private static Color StatoColor(StatoTratta stato) => stato switch
+    {
+        StatoTratta.Pianificata => Color.Info,
+        StatoTratta.InCorso => Color.Warning,
+        StatoTratta.Completata => Color.Success,
+        StatoTratta.Annullata => Color.Default,
+        _ => Color.Default
+    };
+
+    private static string StatoLabel(StatoTratta stato) => stato switch
+    {
+        StatoTratta.Pianificata => "Pianificata",
+        StatoTratta.InCorso => "In corso",
+        StatoTratta.Completata => "Completata",
+        StatoTratta.Annullata => "Annullata",
+        _ => stato.ToString()
+    };
+}

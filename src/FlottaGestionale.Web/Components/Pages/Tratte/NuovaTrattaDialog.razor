@@ -1,0 +1,154 @@
+@using FlottaGestionale.Application.Interfaces
+@using FlottaGestionale.Domain.Entities
+@using FlottaGestionale.Domain.Enums
+@inject IAutistaService AutistaService
+@inject IMezzoService MezzoService
+@inject IClienteService ClienteService
+@inject IDestinazioneService DestinazioneService
+
+<MudDialog>
+    <DialogContent>
+        <MudForm @ref="_form">
+            <MudSelect T="int?" @bind-Value="_autistaId" Label="Autista" Required="true" RequiredError="Seleziona un autista.">
+                @foreach (var a in _autisti)
+                {
+                    <MudSelectItem T="int?" Value="@((int?)a.Id)">@a.Cognome @a.Nome</MudSelectItem>
+                }
+            </MudSelect>
+            <MudSelect T="int?" @bind-Value="_mezzoId" Label="Mezzo" Required="true" RequiredError="Seleziona un mezzo."
+                       HelperText="@(_mezzi.Count == 0 ? "Nessun mezzo disponibile al momento." : null)">
+                @foreach (var m in _mezzi)
+                {
+                    <MudSelectItem T="int?" Value="@((int?)m.Id)">@m.Targa - @m.Marca @m.Modello</MudSelectItem>
+                }
+            </MudSelect>
+            <MudSelect T="int?" @bind-Value="_clienteId" Label="Cliente" Required="true" RequiredError="Seleziona un cliente.">
+                @foreach (var c in _clienti)
+                {
+                    <MudSelectItem T="int?" Value="@((int?)c.Id)">@c.RagioneSociale</MudSelectItem>
+                }
+            </MudSelect>
+            <MudDatePicker @bind-Date="_dataPianificata" Label="Data pianificata" Required="true" RequiredError="Seleziona una data." />
+            <MudTextField @bind-Value="_note" Label="Note" Lines="2" />
+
+            <MudText Typo="Typo.subtitle1" Class="mt-4 mb-2">Tappe</MudText>
+            <MudGrid>
+                <MudItem xs="8">
+                    <MudSelect T="int?" @bind-Value="_destinazioneDaAggiungere" Label="Destinazione">
+                        @foreach (var d in _destinazioni)
+                        {
+                            <MudSelectItem T="int?" Value="@((int?)d.Id)">@d.Denominazione</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="4" Class="d-flex align-center">
+                    <MudButton Variant="Variant.Outlined" FullWidth="true" OnClick="AggiungiTappa">Aggiungi</MudButton>
+                </MudItem>
+            </MudGrid>
+
+            @if (_tappeSelezionate.Count == 0)
+            {
+                <MudText Color="@(_mostraErroreTappe ? Color.Error : Color.Secondary)" Class="mt-2">
+                    Nessuna tappa aggiunta. La tratta deve avere almeno una tappa.
+                </MudText>
+            }
+            else
+            {
+                <MudList T="string" Class="mt-2">
+                    @for (var i = 0; i < _tappeSelezionate.Count; i++)
+                    {
+                        var index = i;
+                        var destinazione = _tappeSelezionate[index];
+                        <MudListItem T="string">
+                            <div class="d-flex justify-space-between align-center" style="width:100%">
+                                <span>@(index + 1). @destinazione.Denominazione</span>
+                                <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="() => RimuoviTappa(index)" />
+                            </div>
+                        </MudListItem>
+                    }
+                </MudList>
+            }
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Annulla</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SubmitAsync">Crea tratta</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    private MudForm _form = null!;
+    private List<Autista> _autisti = [];
+    private List<Mezzo> _mezzi = [];
+    private List<Cliente> _clienti = [];
+    private List<Destinazione> _destinazioni = [];
+    private readonly List<Destinazione> _tappeSelezionate = [];
+
+    private int? _autistaId;
+    private int? _mezzoId;
+    private int? _clienteId;
+    private int? _destinazioneDaAggiungere;
+    private DateTime? _dataPianificata = DateTime.Today;
+    private string? _note;
+    private bool _mostraErroreTappe;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _autisti = (await AutistaService.GetAllAsync()).Where(a => a.Attivo).ToList();
+        _mezzi = (await MezzoService.GetAllAsync()).Where(m => m.Attivo && m.Stato == StatoMezzo.Disponibile).ToList();
+        _clienti = (await ClienteService.GetAllAsync()).Where(c => c.Attivo).ToList();
+        _destinazioni = (await DestinazioneService.GetAllAsync()).Where(d => d.Attivo).ToList();
+    }
+
+    private void AggiungiTappa()
+    {
+        if (_destinazioneDaAggiungere is null)
+        {
+            return;
+        }
+
+        var destinazione = _destinazioni.FirstOrDefault(d => d.Id == _destinazioneDaAggiungere);
+        if (destinazione is not null)
+        {
+            _tappeSelezionate.Add(destinazione);
+            _mostraErroreTappe = false;
+        }
+
+        _destinazioneDaAggiungere = null;
+    }
+
+    private void RimuoviTappa(int index) => _tappeSelezionate.RemoveAt(index);
+
+    private async Task SubmitAsync()
+    {
+        await _form.ValidateAsync();
+
+        if (_tappeSelezionate.Count == 0)
+        {
+            _mostraErroreTappe = true;
+        }
+
+        if (!_form.IsValid || _autistaId is null || _mezzoId is null || _clienteId is null || _dataPianificata is null || _tappeSelezionate.Count == 0)
+        {
+            return;
+        }
+
+        var tratta = new Tratta
+        {
+            AutistaId = _autistaId.Value,
+            MezzoId = _mezzoId.Value,
+            ClienteId = _clienteId.Value,
+            DataPianificata = _dataPianificata.Value,
+            Note = _note
+        };
+
+        var destinazioniOrdinate = _tappeSelezionate.Select(d => d.Id).ToList();
+        MudDialog.Close(DialogResult.Ok(new NuovaTrattaResult(tratta, destinazioniOrdinate)));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    public record NuovaTrattaResult(Tratta Tratta, List<int> DestinazioniOrdinate);
+}
