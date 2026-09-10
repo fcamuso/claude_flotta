@@ -1,0 +1,76 @@
+@using FlottaGestionale.Infrastructure.Identity
+
+<MudDialog>
+    <DialogContent>
+        <MudText Class="mb-4">Autista: <strong>@AutistaNome</strong></MudText>
+
+        <MudForm @ref="_form">
+            @if (!AccountEsistente)
+            {
+                <MudTextField @bind-Value="_email" Label="Email di accesso" InputType="InputType.Email" Required="true" RequiredError="L'email è obbligatoria." />
+            }
+            else
+            {
+                <MudTextField Value="@EmailEsistente" Label="Email di accesso" ReadOnly="true" Disabled="true" />
+            }
+
+            <MudRadioGroup T="bool" Value="_generaAutomaticamente" ValueChanged="OnModalitaChanged" Class="mt-3">
+                <MudRadio T="bool" Value="true">Genera password automaticamente</MudRadio>
+                <MudRadio T="bool" Value="false">Inserisci password manualmente</MudRadio>
+            </MudRadioGroup>
+
+            @if (!_generaAutomaticamente)
+            {
+                <MudTextField @bind-Value="_passwordManuale" Label="Password" InputType="InputType.Password" Required="true" RequiredError="Inserisci una password." HelperText="Almeno 6 caratteri." />
+            }
+
+            <MudCheckBox T="bool" @bind-Value="_richiediCambioPassword" Label="Richiedi il cambio password al primo accesso" Class="mt-2" />
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Annulla</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SubmitAsync">
+            @(AccountEsistente ? "Reimposta password" : "Crea accesso")
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter] public string AutistaNome { get; set; } = string.Empty;
+    [Parameter] public bool AccountEsistente { get; set; }
+    [Parameter] public string? EmailEsistente { get; set; }
+    [Parameter] public string EmailSuggerita { get; set; } = string.Empty;
+
+    private MudForm _form = null!;
+    private string _email = string.Empty;
+    private bool _generaAutomaticamente = true;
+    private string _passwordManuale = string.Empty;
+    private bool _richiediCambioPassword = true;
+
+    protected override void OnInitialized()
+    {
+        _email = EmailSuggerita;
+    }
+
+    private void OnModalitaChanged(bool value) => _generaAutomaticamente = value;
+
+    private async Task SubmitAsync()
+    {
+        await _form.ValidateAsync();
+        if (!_form.IsValid)
+        {
+            return;
+        }
+
+        var password = _generaAutomaticamente ? PasswordGenerator.Generate() : _passwordManuale;
+        var email = AccountEsistente ? EmailEsistente! : _email;
+
+        MudDialog.Close(DialogResult.Ok(new GestisciAccessoResult(email, password, _richiediCambioPassword)));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    public record GestisciAccessoResult(string Email, string Password, bool RichiediCambioPassword);
+}

@@ -56,6 +56,34 @@ app.UseAuthorization();
 
 app.UseAntiforgery();
 
+// Impone il cambio password al primo accesso (MustChangePassword) a livello di richiesta, non solo
+// come redirect dopo il login: così non è aggirabile navigando direttamente a un'altra pagina.
+app.Use(async (context, next) =>
+{
+    var requestPath = context.Request.Path;
+    var isEsclusa = requestPath.StartsWithSegments("/cambia-password", StringComparison.OrdinalIgnoreCase)
+        || requestPath.StartsWithSegments("/account", StringComparison.OrdinalIgnoreCase)
+        || requestPath.StartsWithSegments("/logout", StringComparison.OrdinalIgnoreCase)
+        || requestPath.StartsWithSegments("/login", StringComparison.OrdinalIgnoreCase)
+        || requestPath.StartsWithSegments("/_blazor", StringComparison.OrdinalIgnoreCase)
+        || requestPath.StartsWithSegments("/_framework", StringComparison.OrdinalIgnoreCase)
+        || requestPath.StartsWithSegments("/_content", StringComparison.OrdinalIgnoreCase)
+        || (requestPath.Value?.Contains('.') ?? false);
+
+    if (!isEsclusa && context.User.Identity?.IsAuthenticated == true)
+    {
+        var userManager = context.RequestServices.GetRequiredService<UserManager<ApplicationUser>>();
+        var user = await userManager.GetUserAsync(context.User);
+        if (user?.MustChangePassword == true)
+        {
+            context.Response.Redirect("/cambia-password");
+            return;
+        }
+    }
+
+    await next();
+});
+
 app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();

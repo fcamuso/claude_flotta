@@ -63,7 +63,10 @@ public static class DependencyInjection
             })
             .AddRoles<IdentityRole>()
             .AddEntityFrameworkStores<AppDbContext>()
-            .AddSignInManager();
+            .AddSignInManager()
+            // Necessario per GeneratePasswordResetTokenAsync (usato per reimpostare la password di
+            // un autista): senza provider di token registrati, Identity non sa come generarli/validarli.
+            .AddDefaultTokenProviders();
 
         services.AddScoped<IAutistaService, AutistaService>();
         services.AddScoped<IMezzoService, MezzoService>();

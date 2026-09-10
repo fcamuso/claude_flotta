@@ -118,7 +118,8 @@ else
             UserName = data.Email,
             Email = data.Email,
             EmailConfirmed = true,
-            AutistaId = data.AutistaId
+            AutistaId = data.AutistaId,
+            MustChangePassword = data.RichiediCambioPassword
         };
 
         var result = await UserManager.CreateAsync(utente, data.Password!);
@@ -129,7 +130,14 @@ else
         }
 
         await UserManager.AddToRoleAsync(utente, data.Ruolo);
-        Snackbar.Add("Utente creato.", Severity.Success);
+
+        await DialogService.ShowMessageBoxAsync(
+            "Credenziali di accesso",
+            new MarkupString(
+                $"<p>Email: <strong>{data.Email}</strong></p>" +
+                $"<p>Password: <strong>{data.Password}</strong></p>" +
+                "<p>Comunicala all'utente: non sarà più visibile dopo la chiusura di questo messaggio.</p>"),
+            yesText: "Ho copiato la password");
     }
 
     private async Task AggiornaUtenteAsync(ApplicationUser utente, string ruoloAttuale, UtenteFormDialog.UtenteFormResult data)

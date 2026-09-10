@@ -2,7 +2,10 @@
 @attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin,Logistica")]
 @using FlottaGestionale.Application.Interfaces
 @using FlottaGestionale.Domain.Entities
+@using FlottaGestionale.Infrastructure.Identity
+@using Microsoft.AspNetCore.Identity
 @inject IAutistaService AutistaService
+@inject UserManager<ApplicationUser> UserManager
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 
@@ -41,6 +44,7 @@ else
             <MudTh>Patente</MudTh>
             <MudTh>Contatti</MudTh>
             <MudTh>Stato</MudTh>
+            <MudTh>Accesso</MudTh>
             <MudTh></MudTh>
         </HeaderContent>
         <RowTemplate>
@@ -53,7 +57,22 @@ else
                     @(context.Attivo ? "Attivo" : "Non attivo")
                 </MudChip>
             </MudTd>
+            <MudTd DataLabel="Accesso">
+                @if (_accountPerAutista.TryGetValue(context.Id, out var email))
+                {
+                    <MudTooltip Text="@email">
+                        <MudChip T="string" Color="Color.Success" Size="Size.Small" Icon="@Icons.Material.Filled.CheckCircle">Collegato</MudChip>
+                    </MudTooltip>
+                }
+                else
+                {
+                    <MudChip T="string" Color="Color.Default" Size="Size.Small">Non collegato</MudChip>
+                }
+            </MudTd>
             <MudTd>
+                <MudTooltip Text="@(_accountPerAutista.ContainsKey(context.Id) ? "Reimposta password" : "Crea accesso")">
+                    <MudIconButton Icon="@Icons.Material.Filled.Key" Size="Size.Small" OnClick="() => GestisciAccessoAsync(context)" />
+                </MudTooltip>
                 <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="() => OpenDialogAsync(context)" />
                 <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="() => DeleteAsync(context)" />
             </MudTd>
@@ -63,6 +82,7 @@ else
 
 @code {
     private List<Autista> _autisti = [];
+    private Dictionary<int, string> _accountPerAutista = [];
     private bool _loading = true;
     private string _searchTerm = string.Empty;
 
@@ -72,6 +92,13 @@ else
     {
         _loading = true;
         _autisti = await AutistaService.GetAllAsync(_searchTerm);
+
+        _accountPerAutista = UserManager.Users
+            .Where(u => u.AutistaId != null)
+            .ToList()
+            .GroupBy(u => u.AutistaId!.Value)
+            .ToDictionary(g => g.Key, g => g.First().Email ?? string.Empty);
+
         _loading = false;
     }
 
@@ -134,6 +161,82 @@ else
             await AutistaService.DeleteAsync(autista.Id);
             Snackbar.Add("Autista eliminato.", Severity.Success);
             await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Errore: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task GestisciAccessoAsync(Autista autista)
+    {
+        var accountEsistente = _accountPerAutista.TryGetValue(autista.Id, out var emailEsistente);
+
+        var parameters = new DialogParameters<GestisciAccessoDialog>
+        {
+            { x => x.AutistaNome, $"{autista.Cognome} {autista.Nome}" },
+            { x => x.AccountEsistente, accountEsistente },
+            { x => x.EmailEsistente, emailEsistente },
+            { x => x.EmailSuggerita, autista.Email ?? string.Empty }
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialog = await DialogService.ShowAsync<GestisciAccessoDialog>(
+            accountEsistente ? "Reimposta password" : "Crea accesso autista", parameters, options);
+        var result = await dialog.Result;
+
+        if (result is null || result.Canceled)
+        {
+            return;
+        }
+
+        var data = (GestisciAccessoDialog.GestisciAccessoResult)result.Data!;
+
+        try
+        {
+            if (accountEsistente)
+            {
+                var user = UserManager.Users.First(u => u.AutistaId == autista.Id);
+                var token = await UserManager.GeneratePasswordResetTokenAsync(user);
+                var resetResult = await UserManager.ResetPasswordAsync(user, token, data.Password);
+                if (!resetResult.Succeeded)
+                {
+                    Snackbar.Add(string.Join(" ", resetResult.Errors.Select(e => e.Description)), Severity.Error);
+                    return;
+                }
+
+                user.MustChangePassword = data.RichiediCambioPassword;
+                await UserManager.UpdateAsync(user);
+            }
+            else
+            {
+                var user = new ApplicationUser
+                {
+                    UserName = data.Email,
+                    Email = data.Email,
+                    EmailConfirmed = true,
+                    AutistaId = autista.Id,
+                    MustChangePassword = data.RichiediCambioPassword
+                };
+
+                var createResult = await UserManager.CreateAsync(user, data.Password);
+                if (!createResult.Succeeded)
+                {
+                    Snackbar.Add(string.Join(" ", createResult.Errors.Select(e => e.Description)), Severity.Error);
+                    return;
+                }
+
+                await UserManager.AddToRoleAsync(user, "Autista");
+            }
+
+            await LoadAsync();
+
+            await DialogService.ShowMessageBoxAsync(
+                "Credenziali di accesso",
+                new MarkupString(
+                    $"<p>Email: <strong>{data.Email}</strong></p>" +
+                    $"<p>Password: <strong>{data.Password}</strong></p>" +
+                    "<p>Comunicala all'autista: non sarà più visibile dopo la chiusura di questo messaggio.</p>"),
+                yesText: "Ho copiato la password");
         }
         catch (Exception ex)
         {

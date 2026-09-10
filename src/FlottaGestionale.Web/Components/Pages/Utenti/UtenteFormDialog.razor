@@ -7,14 +7,25 @@
             @if (!IsEdit)
             {
                 <MudTextField @bind-Value="_email" Label="Email" InputType="InputType.Email" Required="true" RequiredError="L'email è obbligatoria." />
-                <MudTextField @bind-Value="_password" Label="Password" InputType="InputType.Password" Required="true" RequiredError="La password è obbligatoria." HelperText="Almeno 6 caratteri." />
+
+                <MudRadioGroup T="bool" Value="_generaAutomaticamente" ValueChanged="OnModalitaChanged" Class="mt-2">
+                    <MudRadio T="bool" Value="true">Genera password automaticamente</MudRadio>
+                    <MudRadio T="bool" Value="false">Inserisci password manualmente</MudRadio>
+                </MudRadioGroup>
+
+                @if (!_generaAutomaticamente)
+                {
+                    <MudTextField @bind-Value="_password" Label="Password" InputType="InputType.Password" Required="true" RequiredError="La password è obbligatoria." HelperText="Almeno 6 caratteri." />
+                }
+
+                <MudCheckBox T="bool" @bind-Value="_richiediCambioPassword" Label="Richiedi il cambio password al primo accesso" Class="mt-2" />
             }
             else
             {
                 <MudTextField Value="@Email" Label="Email" ReadOnly="true" Disabled="true" />
             }
 
-            <MudSelect T="string" @bind-Value="_ruolo" Label="Ruolo" Required="true">
+            <MudSelect T="string" @bind-Value="_ruolo" Label="Ruolo" Required="true" Class="mt-2">
                 <MudSelectItem T="string" Value="@("Admin")">Amministratore</MudSelectItem>
                 <MudSelectItem T="string" Value="@("Logistica")">Logistica</MudSelectItem>
                 <MudSelectItem T="string" Value="@("Autista")">Autista</MudSelectItem>
@@ -49,7 +60,9 @@
 
     private MudForm _form = null!;
     private string _email = string.Empty;
+    private bool _generaAutomaticamente = true;
     private string _password = string.Empty;
+    private bool _richiediCambioPassword = true;
     private string _ruolo = "Logistica";
     private int? _autistaId;
 
@@ -60,6 +73,8 @@
         _autistaId = AutistaId;
     }
 
+    private void OnModalitaChanged(bool value) => _generaAutomaticamente = value;
+
     private async Task SubmitAsync()
     {
         await _form.ValidateAsync();
@@ -69,10 +84,19 @@
         }
 
         var autistaId = _ruolo == "Autista" ? _autistaId : null;
-        MudDialog.Close(DialogResult.Ok(new UtenteFormResult(_email, IsEdit ? null : _password, _ruolo, autistaId)));
+        string? password = null;
+        var richiediCambio = false;
+
+        if (!IsEdit)
+        {
+            password = _generaAutomaticamente ? PasswordGenerator.Generate() : _password;
+            richiediCambio = _richiediCambioPassword;
+        }
+
+        MudDialog.Close(DialogResult.Ok(new UtenteFormResult(_email, password, _ruolo, autistaId, richiediCambio)));
     }
 
     private void Cancel() => MudDialog.Cancel();
 
-    public record UtenteFormResult(string Email, string? Password, string Ruolo, int? AutistaId);
+    public record UtenteFormResult(string Email, string? Password, string Ruolo, int? AutistaId, bool RichiediCambioPassword);
 }
